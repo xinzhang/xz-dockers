@@ -1,18 +1,30 @@
 FROM debian:buster-slim
 
+ENV PATH $PATH:/usr/local/gcloud/google-cloud-sdk/bin 
+
 RUN apt-get update && apt-get install -y \
-  apt-transport-https \
-  ca-certificates \
-  curl
+	apt-transport-https \
+	ca-certificates \
+	curl \
+	python py-crcmod libc6-compat 
+
+# Downloading gcloud package
+RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tmp/google-cloud-sdk.tar.gz \
+  && mkdir -p /usr/local/gcloud \
+  && tar -C /usr/local/gcloud -xvf /tmp/google-cloud-sdk.tar.gz \
+  && /usr/local/gcloud/google-cloud-sdk/install.sh \
+  && gcloud components install kubectl alpha beta docker-credential-gcr cloud_sql_proxy \
+  && gcloud config set core/disable_usage_reporting true \
+  && gcloud config set component_manager/disable_update_check true \
+  && gcloud config set metrics/environment github_docker_image 
 
 ENV VERSION v0.5.1
 
-RUN mkdir /octant && cd /octant && curl -o octant.deb -L https://github.com/vmware/octant/release ...
+RUN mkdir /octant && cd /octant && curl -o octant.deb -L https://github.com/vmware/octant/releases/download/${VERSION}/octant_0.5.1_Linux-64bit.deb && dpkg -i octant.deb && rm -rf /octant
 
 ENV OCTANT_LISTENER_ADDR=0.0.0.0:51234
-ENV OCTAT_DISABLE_OPEN_BROWSER=true
+ENV OCTANT_DISABLE_OPEN_BROWSER=true
 
-VOLUME [ "/root/.kube" ]
+VOLUME ["/root/.kube"]
 
 ENTRYPOINT ["octant"]
-

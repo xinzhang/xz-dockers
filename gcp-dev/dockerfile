@@ -1,0 +1,67 @@
+FROM docker:dind
+
+ARG HELM_HOME=/root/.helm
+
+ENV PATH $PATH:/usr/local/gcloud/google-cloud-sdk/bin 
+ENV EDITOR nano
+ENV GCP_ZONE australia-southeast1-a
+
+ARG HELM_VERSION=2.13.1
+ARG KUBESEC_VERSION=0.9.2
+ARG ARK_VERSION=0.10.1
+
+RUN adduser -h /home/dev -s /bin/bash -D dev
+RUN apk update && apk --no-cache add sudo curl nano bash vim jq \
+  python py-crcmod openssl openssh-client git libc6-compat \
+  gnupg bind-tools ncurses
+  
+RUN alias k=kubectl
+
+COPY ./bin/kubetail /sbin/kubetail
+COPY ./bin/*.sh /sbin/
+COPY ./bin/kubectx /sbin/
+COPY ./bin/kubens /sbin/
+
+# Downloading gcloud package
+RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tmp/google-cloud-sdk.tar.gz \
+  && mkdir -p /usr/local/gcloud \
+  && tar -C /usr/local/gcloud -xvf /tmp/google-cloud-sdk.tar.gz \
+  && /usr/local/gcloud/google-cloud-sdk/install.sh \
+  && gcloud components install kubectl alpha beta docker-credential-gcr cloud_sql_proxy \
+  && gcloud config set core/disable_usage_reporting true \
+  && gcloud config set component_manager/disable_update_check true \
+  && gcloud config set metrics/environment github_docker_image 
+
+# Install Helm
+RUN curl -sfL -o /tmp/helm.tar.gz https://storage.googleapis.com/kubernetes-helm/helm-v$HELM_VERSION-linux-amd64.tar.gz \
+  && tar -zxvf /tmp/helm.tar.gz -C /usr/local/bin/ --strip-components=1 linux-amd64/helm \
+  && rm -rf /tmp/helm.tar.gz \
+  && helm init --client-only \
+  && helm repo add incubator https://kubernetes-charts-incubator.storage.googleapis.com/ \
+  && helm plugin install https://github.com/futuresimple/helm-secrets \
+  && helm plugin install https://github.com/databus23/helm-diff --version master  \
+  && helm plugin install https://github.com/nouney/helm-gcs \
+  && curl -sfL -o /usr/local/bin/helmfile https://github.com/roboll/helmfile/releases/download/v0.22.0/helmfile_linux_amd64 \
+  && chmod a+x /usr/local/bin/helmfile
+
+# Other
+RUN curl -sSL -o /usr/local/bin/kubesec https://github.com/shyiko/kubesec/releases/download/${KUBESEC_VERSION}/kubesec-${KUBESEC_VERSION}-linux-amd64 \
+  && chmod a+x /usr/local/bin/kubesec \
+  && chmod +x /sbin/kubetail \
+  && chmod +x /sbin/goto-*.sh \
+  && chmod +x /sbin/kubectx \
+  && chmod +x /sbin/kubens
+
+# Install ark
+RUN curl -sfL -o /tmp/ark.tar.gz https://github.com/heptio/velero/releases/download/v${ARK_VERSION}/ark-v${ARK_VERSION}-linux-amd64.tar.gz \
+  && mkdir -p /usr/local/bin/ark \
+  && tar -zxvf /tmp/ark.tar.gz -C /usr/local/bin/ark \
+  && export PATH=$PATH:/usr/local/bin/ark
+
+# install terraform
+ENV TERRAFORM_VERSION 0.11.13
+
+RUN curl -Os https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
+    && unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /bin
+
+WORKDIR /home/dev

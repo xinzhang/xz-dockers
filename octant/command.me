@@ -1,1 +1,8 @@
-docker run -it -p 51234:51234 -v ~\.kube
+# octant with gcloud
+
+# build
+docker build -t xz/octant .
+
+# Run local
+docker run -it -p 51234:51234 -v ~/.kube:/root/.kube xz/octant
+
