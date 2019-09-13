@@ -1,0 +1,52 @@
+FROM docker:dind
+
+ARG HELM_HOME=/root/.helm
+ENV EDITOR nano
+RUN adduser -h /home/dev -s /bin/bash -D dev
+
+ENV KOPS_VERSION=1.10.0
+# https://kubernetes.io/docs/tasks/kubectl/install/
+# latest stable kubectl: curl -s https://storage.googleapis.com/kubernetes-release/release/stable.txt
+ENV KUBECTL_VERSION=v1.11.2
+
+RUN apk update && apk --no-cache add sudo curl nano bash vim \
+  python py-crcmod openssl openssh-client git libc6-compat \
+  gnupg
+
+#AWS
+RUN apk add --update python py-pip openssl ca-certificates groff zip && \
+    pip install --upgrade pip awscli 
+
+#KOPS
+RUN apk --no-cache add ca-certificates \
+  && apk --no-cache add --virtual build-dependencies curl \
+  && curl -O --location --silent --show-error https://github.com/kubernetes/kops/releases/download/${KOPS_VERSION}/kops-linux-amd64 \
+  && mv kops-linux-amd64 /usr/local/bin/kops \
+  && curl -LO https://storage.googleapis.com/kubernetes-release/release/$KUBECTL_VERSION/bin/linux/amd64/kubectl \
+  && mv kubectl /usr/local/bin/kubectl \
+  && chmod +x /usr/local/bin/kops /usr/local/bin/kubectl \
+  && apk del --purge build-dependencies
+
+# Install Helm
+RUN curl https://raw.githubusercontent.com/kubernetes/helm/master/scripts/get > get_helm.sh \
+  && chmod +x get_helm.sh \
+  && ./get_helm.sh \
+  && helm init --client-only \
+  && helm repo add incubator https://kubernetes-charts-incubator.storage.googleapis.com/ \
+  && helm plugin install https://github.com/futuresimple/helm-secrets \
+  && helm plugin install https://github.com/databus23/helm-diff --version master  \
+  && helm plugin install https://github.com/nouney/helm-gcs \
+  && curl -sfL -o /usr/local/bin/helmfile https://github.com/roboll/helmfile/releases/download/v0.22.0/helmfile_linux_amd64 \
+  && chmod a+x /usr/local/bin/helmfile
+
+# Other
+RUN curl -sSL -o /usr/local/bin/kubesec https://github.com/shyiko/kubesec/releases/download/0.9.2/kubesec-0.9.2-linux-amd64 \
+  && chmod a+x /usr/local/bin/kubesec 
+
+# install terraform
+ENV TERRAFORM_VERSION 0.11.8
+
+RUN curl -Os https://releases.hashicorp.com/terraform/${TERRAFORM_VERSION}/terraform_${TERRAFORM_VERSION}_linux_amd64.zip \
+    && unzip terraform_${TERRAFORM_VERSION}_linux_amd64.zip -d /bin
+
+WORKDIR /home/dev
